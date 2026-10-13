@@ -1,0 +1,191 @@
+================================================================================
+ ECHO - VST3 PLUG-IN  |  KONZEPT
+================================================================================
+JUCE 9, VST3, Stereo-Audio-Plugin
+Projekt: D:\VST-output\echo  (Name: "echo", Firma: "millerlight")
+
+1. ZIEL
+--------------------------------------------------------------------------------
+Tempo-syncbares Stereo-Echo mit zwei Betriebsmodi:
+
+  PING-PONG  zwei unabhaengige Ping-Pong-Kanaele (Zeile 1 = linker Eingang,
+             Zeile 2 = rechter Eingang). Der Ping-Pong-Rahmen wird von den
+             beiden Pan-Reglern aufgespannt: Voice 1 startet bei pan1,
+             Voice 2 bei pan2; die Echos alternieren immer zwischen den
+             beiden Pan-Positionen (hin und her).
+  DUAL       links und rechts unabhaengig: eigene Notenart/Betonung bzw.
+             ms-Time, Pan-Position und Feedback pro Zeile (Stereo-Delay)
+
+  (Der fruehere MONO-Modus ist entfallen.)
+
+2. GLOBALE PARAMETER (alle Modi)
+--------------------------------------------------------------------------------
+  Modus       Choice:  Ping-Pong / Dual                (Default: Ping-Pong)
+  Sync        Schalter (Switcher) mit klarem ON/OFF-   (Default: ON)
+              Zustand: DAW-Tempo-Sync an/aus
+  Dry/Wet     Slider:  0 - 100 %, ganzzahlig,          (Default: 100 % = wet)
+                       ganz unten am Rand der UI;
+                       Crossfade, wirkt fuer alle Modi:
+                         0 %   = nur trockenes Signal
+                         100 % = nur Echo (kein Trockenanteil)
+
+  (Kein Bypass. Eine globale Time-Zeile gibt es nicht; die Zeit liegt pro Zeile.)
+
+3. TEMPO-SYNC
+--------------------------------------------------------------------------------
+  - BPM kommt vom Host (VST3-Tempo-Event, im Audio-Thread als MIDI-
+    Tempomessage in processBlock abgegriffen), Default 120,
+    begrenzt auf 30 - 300 BPM.
+  - Sync an:  Delayzeit = (60 / BPM) * Notenart-Faktor * Betonungsfaktor
+        Notenart:  1 -> x4      1/2 -> x2      1/4 -> x1
+                   1/8 -> x0.5  1/16 -> x0.25  1/32 -> x0.125
+        Betonung:  Straight -> x1   Dot -> x1.5   Triplet -> x 2/3
+                   None -> Zeile schickt kein Echo (nur Dry)
+  - Beispiel 120 BPM, 1/8:
+        Straight = 0.25 s   Dot = 0.375 s   Triplet = 0.1667 s
+  - Sync aus: pro Zeile eine eigene ms-Time (Zeile 1 / Zeile 2 unabhaengig);
+    Notenart wird dann durch ein ms-Zahlenfeld ersetzt. Die Betonung bleibt
+    aktiv und multipliziert die ms-Time:
+        Delayzeit = ms-Time * Betonungsfaktor   (Straight x1, Dot x1.5, 2/3 Triplet)
+  - Ringpuffer pro Kanal, groesse fuer max. 12 s (30 BPM, ganze Note dot),
+    fraktionales Delay durch lineare Interpolation.
+
+4. ZEILE 1 / ZEILE 2 (frueher L / R)
+--------------------------------------------------------------------------------
+Pro Zeile die gleichen Regler:
+
+  Notenart    Choice: 1 ... 1/32          (Default: 1/8;  nur bei Sync an)
+  ms-Time     Slider: 10 - 2000 ms        (Default: 250 ms; nur bei Sync aus,
+                                           ersetzt dann die Notenart)
+  Betonung    Choice: Straight/Dot/Triplet/None (Default: Straight; in beiden
+                                           Sync-Zustaenden aktiv. "None" =
+                                           Zeile schickt kein Echo, nur Dry)
+  Pan         Slider: -100 % ... +100 %   (Labels "L" und "R" flankieren
+                                           den Regler; Default: Z1=+100,
+                                           Z2=-100)
+  Feedback    Slider: 0 - 100 %           (Default: 40 %)
+
+  Alle Zahlenwerte ganzzahlig (keine Nachkommastellen).
+
+5. MODI - VERHALTEN
+--------------------------------------------------------------------------------
+  Dry/Wet-Crossfade global (wet = Dry/Wet in 0..1):
+      outL = dryInL * (1-wet) + wet * echoL
+      outR = dryInR * (1-wet) + wet * echoR
+  -> bei 0 % hoert man nur das Original, bei 100 % nur das Echo.
+  Der Delay-Feed bleibt voll (Echo-Quelle), nur der Ausgang wird gekreuzt.
+
+  Pan-Gains (p in -1..+1, equal power):
+      G_L(p) = cos((p+1) * Pi/4)   G_R(p) = sin((p+1) * Pi/4)
+
+  PING-PONG (zwei voneinander unabhaengige, kreuzgekoppelte Voices):
+      Der Ping-Pong-Rahmen wird von den beiden Pan-Reglern aufgespannt:
+      jedes Echo liegt abwechselnd auf Position pan1 und Position pan2.
+
+      Voice 1 (Zeile 1, linker Eingang): Echo 1 auf pan1, dann pan2, pan1, ...
+      Voice 2 (Zeile 2, rechter Eingang): Echo 1 auf pan2, dann pan1, pan2, ...
+      (Default pan1=+100 -> Echo 1 RECHTS, pan2=-100 -> Echo 1 LINKS.)
+
+      physikalische Lines: Voice 1 -> (delayL1, delayR1),
+                           Voice 2 -> (delayL2, delayR2);
+      A = Echo-Position pan1, B = Echo-Position pan2.
+
+      Voice 1 (startet bei pan1):
+        readA = Delay(A), readB = Delay(B)
+        write(A) = inL + readB * fb1
+        write(B) = readA * fb1
+      Voice 2 (startet bei pan2):
+        readA = Delay(A), readB = Delay(B)
+        write(B) = inR + readA * fb2
+        write(A) = readB * fb2
+
+      echoL += readA * G_L(pan1) + readB * G_L(pan2)   (pro Voice)
+      echoR += readA * G_R(pan1) + readB * G_R(pan2)
+
+      -> Voice 1: Echo bei pan1@1*D, pan2@2*D, pan1@3*D, ...
+         Voice 2: Echo bei pan2@1*D, pan1@2*D, pan2@3*D, ...
+         (Default: Voice 1 R,L,R,... Voice 2 L,R,L,...)
+         Amplitude klingt mit fb^(n-1) ab.
+      D ist je Voice: Sync ? f(BPM, NoteX, BetonungX) : TimeX [ms] * BetonungX.
+
+  DUAL (X = 1 oder 2; ZeitX = Sync ? f(BPM, NoteX, BetonungX) : TimeX):
+      write1 = inL + read1 * fb1      (Delay 1 = Kanal 1)
+      write2 = inR + read2 * fb2      (Delay 2 = Kanal 2)
+      echoL = read1 * G_L(pan1) + read2 * G_L(pan2)
+      echoR = read1 * G_R(pan1) + read2 * G_R(pan2)
+      out = Crossfade (siehe oben)
+      -> Jede Zeile wiederholt ihr Echo an ihrer festen Pan-Position.
+
+6. PARAMETER-UEBERSICHT (APVTS-IDs)
+--------------------------------------------------------------------------------
+  mode         Choice  Ping-Pong / Dual        (Default 1 = Dual)
+  sync         Bool                            (Default true = ON)
+  time1,time2  Float   10 - 2000 ms, Schritt 1 (Default 500 / 1000;
+                                                nur bei Sync aus, sonst
+                                                bleiben die Werte im Hintergrund)
+  drywet       Float   0 - 100 %, Schritt 1    (Default 50)
+  note1        Choice  1 ... 1/32              (Default 3 = 1/8)
+  note2        Choice  1 ... 1/32              (Default 2 = 1/4)
+  subdiv1      Choice  Straight/Dot/Triplet/None (Default 2 = Triplet)
+  subdiv2      Choice  Straight/Dot/Triplet/None (Default 0 = Straight)
+  pan1,pan2    Float   -100 ... +100, Schritt1 (Default -100 / +100)
+  fb1,fb2      Float   0 - 100 %, Schritt 1    (Default 50)
+
+  Anzeige: alle Zahlenwerte ohne Nachkommastellen
+           (Slider setNumDecimalPlacesToDisplay(0)).
+  Doppelklick auf den Regler setzt den jeweiligen Parameter-Default
+  (aus der APVTS gelesen, nicht der Wert 0).
+
+7. EDITOR (UI)
+--------------------------------------------------------------------------------
+  Ca. 660 x 210 px, dunkles Theme:
+
+  [Echo]                        [Diskette] [Ordner] [Papierkorb]
+  120 BPM   Sync [  ON  ]                        [Preset-Menue v]
+  Modus:   [Ping-Pong] [Dual]
+  1: Note [v] | ms [--slider--]    Betonung [v]  Pan L[----slider----]R  Feedback ...
+  2: Note [v] | ms [--slider--]    Betonung [v]  Pan L[----slider----]R  Feedback ...
+  Dry/Wet  [---slider---] 100 %
+
+  - Sync an  -> Notenart erscheint im ersten Feld der Zeile, ms-Time ist
+                versteckt; Betonung ist aktiv.
+  - Sync aus -> ms-Time erscheint statt Notenart (pro Zeile unabhaengig);
+                Betonung bleibt aktiv (wirkt auf die ms-Time).
+  - Betonung: Straight / Dot / Triplet / None.
+    "None" -> diese Zeile schickt kein Echo (nur der Dry-Anteil bleibt).
+  - Sync-Switcher: klarer ON/OFF-Zustand (Text ON/OFF, Schiene gruen bei ON,
+    dunkel bei OFF, Schaltknopf wandert auf die aktive Seite).
+  - BPM-Anzeige ist bei Sync aus stark ausgegraut.
+  - [v] = Dropdown (ComboBox); beide Zeilen sind in beiden Modi aktiv.
+  - Dry/Wet-Regler ganz unten (ganzzahlig, Crossfade trocken -> Echo).
+  - Oben rechts drei Icons: Diskette (Preset speichern), Ordner (Preset laden),
+    Papierkorb (Preset loeschen); direkt daneben liegt das Preset-Menue in der
+    BPM-Zeile (rechtsbuendig).
+  - Nach Speichern (Diskette) oder Laden (Ordner) ist das jeweilige Preset im
+    Menue markiert; Loeschen (Papierkorb) entfernt das im Menue gewaehlte Preset
+    nach einer Sicherheitsabfrage.
+  - Das Menue liest den Ordner beim Oeffnen sowie nach Speichern/Laden/Loeschen
+    neu ein.
+
+8. PRESETS (.echo-Dateien)
+--------------------------------------------------------------------------------
+  - Ablage: "Dokumente\echo presets" (Benutzerordner; wird bei Bedarf angelegt).
+  - Inhalt: genau der Plugin-State (getStateInformation / setStateInformation),
+    wie ihn der Host bekommt (JUCE copyXmlToBinary = kleiner Binaer-Header + XML).
+  - Reihenfolge im Menue: Aenderungsdatum, neuestes zuerst.
+  - Speichern/Laden ueber native Dateidialoge (Ordner), Loeschen mit
+    Sicherheitsabfrage (Papierkorb).
+  - Alte Presets bleiben gueltig: Choice-Parameter speichern nur den Index, das
+    Umbenennen eines Eintrags (z. B. "Gerade" -> "Straight") wirkt automatisch.
+
+9. TECHNIK / BUILD
+--------------------------------------------------------------------------------
+  - Parameter via AudioProcessorValueTreeState (APVTS); State als ValueTree
+    (getStateInformation / setStateInformation) -> Presets/Save in der DAW.
+  - getTailLengthSeconds(): abhaengig vom maximalen Feedback (fb1, fb2),
+    damit die DAW den Nachhall sauber ausklingen lassen kann.
+  - BPM als atomares int im Processor, Editor zeigt es per Timer an.
+  - Build: MSBuild (VS 2026), Release|x64
+    Output: D:\VST-output\echo\Builds\VisualStudio2026\x64\Release\
+            VST3\echo.vst3 (Bundle)
+================================================================================

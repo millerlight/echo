@@ -1,0 +1,78 @@
+# ============================================================================
+#  .gitignore fuer das "echo"-Projekt
+#  (JUCE / Projucer, Visual Studio 2026, Inno Setup)
+# ----------------------------------------------------------------------------
+#  Versioniert werden nur die Quellen:
+#    Source/          Plugin-Code
+#    echo.jucer       Projucer-Projekt (Quelle fuer Builds/ + JuceLibraryCode/)
+#    Konzept.txt      Doku
+#    presets/         Preset-Quelle fuer den Installer
+#    installer/       Inno-Setup-Skript (+ README, Batch)
+#
+#  Nach dem Klonen: echo.jucer im Projucer oeffnen und speichern -> Builds/
+#  und JuceLibraryCode/ werden neu erzeugt, danach in Visual Studio bauen.
+# ============================================================================
+
+# --- Von Projucer generiert -------------------------------------------------
+Builds/
+JuceLibraryCode/
+Backups/
+
+# --- Inno-Setup-Ausgabe (Setup.exe) -----------------------------------------
+installer/output/
+
+# --- Visual Studio / MSBuild ------------------------------------------------
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.VC.db
+*.VC.VC.opendb
+*.vsconfig
+
+# MSBuild-/Compiler-Artefakte (greifen, falls mal ausserhalb von Builds/)
+*.obj
+*.iobj
+*.ipdb
+*.pdb
+*.idb
+*.ilk
+*.exp
+*.lib
+*.tlog
+*.lastbuildstate
+*.recipe
+*.log
+
+# --- Build-Ergebnisse des Plugins -------------------------------------------
+*.vst3
+*.dll
+*.exe
+*.dSYM/
+
+# --- Editor / Tooling -------------------------------------------------------
+.vscode/
+.idea/
+
+# --- Betriebssystem-Kram ----------------------------------------------------
+Thumbs.db
+ehthumbs.db
+desktop.ini
+.DS_Store
+
+# ============================================================================
+#  Alternative: Die von Projucer erzeugten VS-Projektdateien doch versionieren.
+#  Dazu oben "Builds/" auskommentieren und stattdessen nur die Artefakte
+#  ignorieren, z. B.:
+#
+#    Builds/**/x64/
+#    Builds/**/Debug/
+#    Builds/**/Release/
+#    Builds/**/*.tlog
+#    Builds/**/*.log
+#    Builds/**/*.pdb
+#    Builds/**/*.obj
+#
+#  (JuceLibraryCode/ bleibt in jedem Fall generiert und wird ignoriert.)
+# ============================================================================
