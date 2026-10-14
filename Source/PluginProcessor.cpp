@@ -293,14 +293,22 @@ juce::AudioProcessorEditor* EchoAudioProcessor::createEditor()
 void EchoAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
     if (auto xml = params.copyState().createXml())
+    {
+        // Aktives Preset mit im State ablegen (geht so auch ins DAW-Projekt).
+        xml->setAttribute ("currentPresetFile", currentPresetFile);
         copyXmlToBinary (*xml, destData);
+    }
 }
 
 void EchoAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     if (auto xml = getXmlFromBinary (data, sizeInBytes))
+    {
+        currentPresetFile = xml->getStringAttribute ("currentPresetFile");
+
         if (xml->hasTagName (params.state.getType()))
             params.replaceState (juce::ValueTree::fromXml (*xml));
+    }
 }
 
 //==============================================================================

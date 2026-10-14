@@ -332,8 +332,17 @@ void EchoAudioProcessorEditor::refreshPresetList()
     for (int i = 0; i < presetFiles.size(); ++i)
         cbPreset.addItem (presetFiles.getReference (i).getFileNameWithoutExtension(), i + 1);
 
-    if (keep > 0 && keep <= presetFiles.size())
+    // Auswahl aus dem vom Processor gemerkten Preset-Pfad wiederherstellen.
+    // Das laesst die Markierung das Schliessen/Oeffnen des Editors und das
+    // Neuladen des DAW-Projekts ueberleben.
+    if (proc.currentPresetFile.isNotEmpty())
+    {
+        markPresetSelected (juce::File (proc.currentPresetFile));
+    }
+    else if (keep > 0 && keep <= presetFiles.size())
+    {
         cbPreset.setSelectedId (keep, juce::dontSendNotification);
+    }
 }
 
 void EchoAudioProcessorEditor::applySelectedPreset()
@@ -351,11 +360,18 @@ void EchoAudioProcessorEditor::applySelectedPreset()
         proc.setStateInformation (state.getData(), (int) state.getSize());
         proc.updateHostDisplay();
         updateEnablement();
+
+        // Geladenes Preset als aktiv merken (ueberlebt Editor-Neustart /
+        // Projekt-Neuladen).
+        markPresetSelected (file);
     }
 }
 
 void EchoAudioProcessorEditor::markPresetSelected (const juce::File& file)
 {
+    // Aktives Preset im Processor merken (Teil des Host-States).
+    proc.currentPresetFile = file.getFullPathName();
+
     for (int i = 0; i < presetFiles.size(); ++i)
     {
         if (sameFile (presetFiles.getReference (i), file))
@@ -473,6 +489,10 @@ void EchoAudioProcessorEditor::deleteSelectedPreset()
 
             if (deleted)
             {
+                // War das geloeschte Preset das aktive, die Merkung aufheben.
+                if (sameFile (juce::File (safe->proc.currentPresetFile), file))
+                    safe->proc.currentPresetFile.clear();
+
                 if (safe->cbPreset.getSelectedId() == prevId)
                     safe->cbPreset.setSelectedId (0, juce::dontSendNotification);
 

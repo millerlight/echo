@@ -60,6 +60,12 @@ public:
     /** Vom Host geliefertes Tempo in BPM (atomar, Editor liest es per Timer). */
     std::atomic<int> bpm { 120 };
 
+    /** Vollpfad des aktuell geladenen Presets (leer = keins). Wird mit dem
+        Host-State gespeichert, damit die Preset-Auswahl im Menue das Schliessen
+        und erneute Oeffnen des Editorfensters sowie das Neuladen des DAW-Projekts
+        ueberlebt. */
+    juce::String currentPresetFile;
+
 private:
     //==============================================================================
     static juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
